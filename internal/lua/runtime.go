@@ -47,7 +47,7 @@ func (r *Registry) Pool() *sshpool.Pool { return r.pool }
 func (r *Registry) Close() { r.L.Close() }
 
 // Eval executes a Lua config file and returns the registry.
-func Eval(filePath string, verbose bool) (*Registry, error) {
+func Eval(filePath string, verbose bool, secrets map[string]string) (*Registry, error) {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func Eval(filePath string, verbose bool) (*Registry, error) {
 		modulesDir + "/?/init.lua",
 	}, ";")))
 
-	registerPrimitives(L, reg, pool, verbose)
+	registerPrimitives(L, reg, pool, verbose, secrets)
 
 	if err := loadStdlib(L); err != nil {
 		L.Close()
@@ -132,7 +132,11 @@ func loadModules(L *lua.LState, dir string) error {
 	return nil
 }
 
-func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbose bool) {
+func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbose bool, secrets map[string]string) {
+	if secrets == nil {
+		secrets = map[string]string{}
+	}
+
 	verbosef := func(format string, args ...any) {
 		if !verbose {
 			return
@@ -259,6 +263,21 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 			L.Push(lua.LString(val))
 		}
 		return 1
+	}))
+
+	// secret(name [, default]) → value  (errors if not set and no default given)
+	L.SetGlobal("secret", L.NewFunction(func(L *lua.LState) int {
+		name := L.CheckString(1)
+		if val, ok := secrets[name]; ok {
+			L.Push(lua.LString(val))
+			return 1
+		}
+		if L.GetTop() >= 2 {
+			L.Push(lua.LString(L.OptString(2, "")))
+			return 1
+		}
+		L.RaiseError("secret %q is not set", name)
+		return 0
 	}))
 
 	// read_file(path) → content  (errors if not found)

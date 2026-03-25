@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/anbraten/bull/internal/engine"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +12,10 @@ var applyCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		file := resolveFile(args)
-		eng := engine.New(verbose)
+		eng, err := newEngine(file)
+		if err != nil {
+			return err
+		}
 		return eng.Apply(file, autoApprove)
 	},
 }

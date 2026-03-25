@@ -16,7 +16,23 @@ var (
 	faint  = color.New(color.Faint).SprintFunc()
 )
 
-func printPlans(plans []ResourcePlan) {
+func isSecretValue(val string, secrets map[string]string) bool {
+	for _, v := range secrets {
+		if val == v {
+			return true
+		}
+	}
+	return false
+}
+
+func redactIfSecret(val string, secrets map[string]string) string {
+	if isSecretValue(val, secrets) {
+		return "[REDACTED]"
+	}
+	return val
+}
+
+func printPlans(plans []ResourcePlan, secrets map[string]string) {
 	creates, updates, noop, errors := 0, 0, 0, 0
 	for _, p := range plans {
 		switch {
@@ -48,19 +64,22 @@ func printPlans(plans []ResourcePlan) {
 		case p.Change == ChangeCreate:
 			fmt.Printf("  %s %s\n", green("+"), bold(id))
 			for _, d := range p.Diffs {
-				fmt.Printf("      %s %s = %s\n", green("+"), cyan(d.Field), green(d.After))
+				after := redactIfSecret(d.After, secrets)
+				fmt.Printf("      %s %s = %s\n", green("+"), cyan(d.Field), green(after))
 			}
 
 		case p.Change == ChangeUpdate:
 			fmt.Printf("  %s %s\n", yellow("~"), bold(id))
 			for _, d := range p.Diffs {
+				before := redactIfSecret(d.Before, secrets)
+				after := redactIfSecret(d.After, secrets)
 				if d.Before == "" {
-					fmt.Printf("      %s %s = %s\n", green("+"), cyan(d.Field), green(d.After))
+					fmt.Printf("      %s %s = %s\n", green("+"), cyan(d.Field), green(after))
 				} else if d.After == "" {
-					fmt.Printf("      %s %s = %s\n", red("-"), cyan(d.Field), red(d.Before))
+					fmt.Printf("      %s %s = %s\n", red("-"), cyan(d.Field), red(before))
 				} else {
 					fmt.Printf("      %s %s: %s → %s\n",
-						yellow("~"), cyan(d.Field), red(d.Before), green(d.After))
+						yellow("~"), cyan(d.Field), red(before), green(after))
 				}
 			}
 

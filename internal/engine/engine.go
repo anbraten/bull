@@ -13,12 +13,18 @@ import (
 // Engine orchestrates plan and apply.
 type Engine struct {
 	Verbose bool
+	Secrets map[string]string
 }
 
-func New(verbose bool) *Engine { return &Engine{Verbose: verbose} }
+func New(verbose bool, secrets map[string]string) *Engine {
+	if secrets == nil {
+		secrets = map[string]string{}
+	}
+	return &Engine{Verbose: verbose, Secrets: secrets}
+}
 
 func (e *Engine) Plan(filePath string) error {
-	reg, err := luaruntime.Eval(filePath, e.Verbose)
+	reg, err := luaruntime.Eval(filePath, e.Verbose, e.Secrets)
 	if err != nil {
 		return err
 	}
@@ -26,12 +32,12 @@ func (e *Engine) Plan(filePath string) error {
 	defer reg.Pool().Close()
 
 	plans := planAll(reg)
-	printPlans(plans)
+	printPlans(plans, e.Secrets)
 	return firstPlanError(plans)
 }
 
 func (e *Engine) Apply(filePath string, autoApprove bool) error {
-	reg, err := luaruntime.Eval(filePath, e.Verbose)
+	reg, err := luaruntime.Eval(filePath, e.Verbose, e.Secrets)
 	if err != nil {
 		return err
 	}
@@ -39,7 +45,7 @@ func (e *Engine) Apply(filePath string, autoApprove bool) error {
 	defer reg.Pool().Close()
 
 	plans := planAll(reg)
-	printPlans(plans)
+	printPlans(plans, e.Secrets)
 
 	if err := firstPlanError(plans); err != nil {
 		return err
@@ -65,7 +71,7 @@ func (e *Engine) Apply(filePath string, autoApprove bool) error {
 }
 
 func (e *Engine) Validate(filePath string) error {
-	reg, err := luaruntime.Eval(filePath, e.Verbose)
+	reg, err := luaruntime.Eval(filePath, e.Verbose, e.Secrets)
 	if err != nil {
 		return err
 	}

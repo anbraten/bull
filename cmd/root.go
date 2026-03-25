@@ -5,6 +5,8 @@ import (
 )
 
 var verbose bool
+var secretsFile string
+var secretKey string
 
 var rootCmd = &cobra.Command{
 	Use:          "bull",
@@ -26,4 +28,6 @@ func Execute() error {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+	rootCmd.PersistentFlags().StringVar(&secretsFile, "secrets-file", ".bull.secrets.enc", "Path to encrypted secrets file (relative to config file)")
+	rootCmd.PersistentFlags().StringVar(&secretKey, "secret-key", "", "Encryption key for secrets (falls back to BULL_SECRET_KEY)")
 }
