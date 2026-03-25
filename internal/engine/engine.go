@@ -18,7 +18,7 @@ type Engine struct {
 func New(verbose bool) *Engine { return &Engine{Verbose: verbose} }
 
 func (e *Engine) Plan(filePath string) error {
-	reg, err := luaruntime.Eval(filePath)
+	reg, err := luaruntime.Eval(filePath, e.Verbose)
 	if err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (e *Engine) Plan(filePath string) error {
 }
 
 func (e *Engine) Apply(filePath string, autoApprove bool) error {
-	reg, err := luaruntime.Eval(filePath)
+	reg, err := luaruntime.Eval(filePath, e.Verbose)
 	if err != nil {
 		return err
 	}
@@ -52,10 +52,10 @@ func (e *Engine) Apply(filePath string, autoApprove bool) error {
 	}
 
 	if !autoApprove {
-		fmt.Printf("\nApply %d change(s)? [yes/no]: ", len(changes))
+		fmt.Printf("\nApply %d change(s)? [y/N]: ", len(changes))
 		reader := bufio.NewReader(os.Stdin)
 		line, _ := reader.ReadString('\n')
-		if strings.TrimSpace(strings.ToLower(line)) != "yes" {
+		if strings.TrimSpace(strings.ToLower(line)) != "y" {
 			fmt.Println("Aborted.")
 			return nil
 		}
@@ -65,7 +65,7 @@ func (e *Engine) Apply(filePath string, autoApprove bool) error {
 }
 
 func (e *Engine) Validate(filePath string) error {
-	reg, err := luaruntime.Eval(filePath)
+	reg, err := luaruntime.Eval(filePath, e.Verbose)
 	if err != nil {
 		return err
 	}

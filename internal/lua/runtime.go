@@ -47,7 +47,7 @@ func (r *Registry) Pool() *sshpool.Pool { return r.pool }
 func (r *Registry) Close() { r.L.Close() }
 
 // Eval executes a Lua config file and returns the registry.
-func Eval(filePath string) (*Registry, error) {
+func Eval(filePath string, verbose bool) (*Registry, error) {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func Eval(filePath string) (*Registry, error) {
 		modulesDir + "/?/init.lua",
 	}, ";")))
 
-	registerPrimitives(L, reg, pool)
+	registerPrimitives(L, reg, pool, verbose)
 
 	if err := loadStdlib(L); err != nil {
 		L.Close()
@@ -132,7 +132,13 @@ func loadModules(L *lua.LState, dir string) error {
 	return nil
 }
 
-func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool) {
+func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbose bool) {
+	verbosef := func(format string, args ...any) {
+		if !verbose {
+			return
+		}
+		fmt.Printf("[verbose] "+format+"\n", args...)
+	}
 
 	// host("name", { addr=, user=, key=, password= })
 	L.SetGlobal("host", L.NewFunction(func(L *lua.LState) int {
@@ -201,7 +207,9 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool) {
 	L.SetGlobal("ssh_exec", L.NewFunction(func(L *lua.LState) int {
 		hostName := L.CheckString(1)
 		cmd := L.CheckString(2)
+		verbosef("ssh_exec(host=%q, cmd=%q)", hostName, cmd)
 		stdout, code, errMsg := pool.Exec(hostName, cmd)
+		verbosef("ssh_exec -> stdout=%q exit_code=%d err_msg=%q", stdout, code, errMsg)
 		L.Push(lua.LString(stdout))
 		L.Push(lua.LNumber(code))
 		L.Push(lua.LString(errMsg))
@@ -214,9 +222,12 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool) {
 		path := L.CheckString(2)
 		content := L.CheckString(3)
 		mode := os.FileMode(L.OptInt(4, 0o644))
+		verbosef("ssh_upload(host=%q, path=%q, bytes=%d, mode=%#o)", hostName, path, len(content), mode)
 		if err := pool.Upload(hostName, path, []byte(content), mode); err != nil {
+			verbosef("ssh_upload -> err_msg=%q", err.Error())
 			L.Push(lua.LString(err.Error()))
 		} else {
+			verbosef("ssh_upload -> err_msg=%q", "")
 			L.Push(lua.LString(""))
 		}
 		return 1
@@ -225,7 +236,9 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool) {
 	// local_exec(cmd) → stdout, exit_code, err_msg
 	L.SetGlobal("local_exec", L.NewFunction(func(L *lua.LState) int {
 		cmdStr := L.CheckString(1)
+		verbosef("local_exec(cmd=%q)", cmdStr)
 		stdout, code, errMsg := runLocal(cmdStr)
+		verbosef("local_exec -> stdout=%q exit_code=%d err_msg=%q", stdout, code, errMsg)
 		L.Push(lua.LString(stdout))
 		L.Push(lua.LNumber(code))
 		L.Push(lua.LString(errMsg))

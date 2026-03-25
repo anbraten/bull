@@ -40,6 +40,7 @@ file("moin", {
 apt("base-packages", {
   host     = "test",
   packages = { "openssh-server", "curl" },
+  update   = true,  -- run apt-get update before checking/installing packages
 })
 
 -- Docker Compose stack (docker is shimmed to echo)

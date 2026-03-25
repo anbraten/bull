@@ -11,7 +11,6 @@ var planCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		file := resolveFile(args)
-		verbose := cmd.Flags().Lookup("verbose").Value.String() == "true"
 		eng := engine.New(verbose)
 		return eng.Plan(file)
 	},
@@ -19,7 +18,6 @@ var planCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(planCmd)
-	planCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
 }
 
 func resolveFile(args []string) string {

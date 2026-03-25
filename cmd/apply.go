@@ -13,7 +13,6 @@ var applyCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		file := resolveFile(args)
-		verbose := cmd.Flags().Lookup("verbose").Value.String() == "true"
 		eng := engine.New(verbose)
 		return eng.Apply(file, autoApprove)
 	},
@@ -22,5 +21,4 @@ var applyCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(applyCmd)
 	applyCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip confirmation prompt")
-	applyCmd.Flags().BoolP("verbose", "v", false, "Enable verbose output")
 }
