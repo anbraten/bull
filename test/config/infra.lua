@@ -1,11 +1,11 @@
 -- test/infra.lua
 -- Integration test against the local SSH container.
--- Start the container first: docker compose up -d  (from the test/ directory)
+-- Start/reset container first: ./setup.sh up  (from the test/ directory)
 
 host("test", {
   addr     = "localhost:2223",
   user     = "root",
-  key      = "~/.ssh/id_ed25519",
+  key      = ".ssh/id_ed25519",
   insecure = true,  -- skip host key check for the test container
 })
 

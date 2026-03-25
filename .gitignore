@@ -1,3 +1,4 @@
 *.enc
 TODO.md
 .claude
+id_ed25519*

@@ -70,7 +70,7 @@ func Eval(filePath string, verbose bool, secrets map[string]string) (*Registry, 
 		modulesDir + "/?/init.lua",
 	}, ";")))
 
-	registerPrimitives(L, reg, pool, verbose, secrets)
+	registerPrimitives(L, reg, pool, verbose, secrets, dir)
 
 	if err := loadStdlib(L); err != nil {
 		L.Close()
@@ -132,7 +132,7 @@ func loadModules(L *lua.LState, dir string) error {
 	return nil
 }
 
-func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbose bool, secrets map[string]string) {
+func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbose bool, secrets map[string]string, configDir string) {
 	if secrets == nil {
 		secrets = map[string]string{}
 	}
@@ -152,12 +152,13 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		if v := opts.RawGetString("insecure"); v != lua.LNil {
 			insecure = bool(lua.LVAsBool(v))
 		}
+		keyPath := tStrAlt(opts, "key", "key_file")
 		h := &sshpool.Host{
 			Name:     name,
 			Addr:     tStr(opts, "addr"),
 			User:     tStr(opts, "user"),
 			Password: tStr(opts, "password"),
-			KeyFile:  tStrAlt(opts, "key", "key_file"),
+			KeyFile:  resolveLocalPath(keyPath, configDir),
 			Insecure: insecure,
 		}
 		reg.Hosts = append(reg.Hosts, h)
@@ -282,7 +283,7 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 
 	// read_file(path) → content  (errors if not found)
 	L.SetGlobal("read_file", L.NewFunction(func(L *lua.LState) int {
-		path := L.CheckString(1)
+		path := resolveLocalPath(L.CheckString(1), configDir)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			L.RaiseError("read_file: %v", err)
@@ -348,4 +349,18 @@ func runLocal(cmdStr string) (stdout string, exitCode int, errMsg string) {
 		return "", -1, err.Error()
 	}
 	return stdout, 0, ""
+}
+
+// resolveLocalPath resolves relative local paths against the config directory.
+func resolveLocalPath(path, configDir string) string {
+	if path == "" {
+		return ""
+	}
+	if strings.HasPrefix(path, "~/") || filepath.IsAbs(path) {
+		return path
+	}
+	if configDir == "" {
+		return path
+	}
+	return filepath.Clean(filepath.Join(configDir, path))
 }
