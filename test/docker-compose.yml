@@ -1,0 +1,6 @@
+services:
+  sshd:
+    build: .
+    ports:
+      - "2223:22"
+    restart: unless-stopped
