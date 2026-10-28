@@ -1,0 +1,16 @@
+FROM alpine:3.19
+
+RUN apk add --no-cache openssh
+
+RUN ssh-keygen -A \
+    && sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config \
+    && sed -i 's/#PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+
+# docker shim: echo all commands instead of running real docker
+RUN printf '#!/bin/sh\necho "[docker] $*"\n' > /usr/local/bin/docker \
+    && chmod +x /usr/local/bin/docker
+
+RUN ln -s /usr/local/bin/docker /usr/local/bin/docker-compose
+
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D"]

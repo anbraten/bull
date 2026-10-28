@@ -4,3 +4,11 @@ services:
     ports:
       - "2223:22"
     restart: unless-stopped
+
+  sshd-alpine:
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    ports:
+      - "2224:22"
+    restart: unless-stopped

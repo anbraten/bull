@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEY_DIR="${SCRIPT_DIR}/config/.ssh"
 KEY_PATH="${KEY_DIR}/id_ed25519"
 PUB_PATH="${KEY_PATH}.pub"
+SERVICES=(sshd sshd-alpine)
 
 usage() {
 	cat <<EOF
@@ -29,8 +30,9 @@ ensure_keypair() {
 }
 
 provision_public_key() {
-	docker compose -f "${SCRIPT_DIR}/docker-compose.yml" cp "${PUB_PATH}" sshd:/tmp/bull_test_key.pub
-	docker compose -f "${SCRIPT_DIR}/docker-compose.yml" exec -T sshd sh -lc '
+	local service="$1"
+	docker compose -f "${SCRIPT_DIR}/docker-compose.yml" cp "${PUB_PATH}" "${service}:/tmp/bull_test_key.pub"
+	docker compose -f "${SCRIPT_DIR}/docker-compose.yml" exec -T "${service}" sh -lc '
 		set -e
 		mkdir -p /root/.ssh
 		touch /root/.ssh/authorized_keys
@@ -46,9 +48,13 @@ provision_public_key() {
 cmd_up() {
 	ensure_keypair
 	docker compose -f "${SCRIPT_DIR}/docker-compose.yml" up -d --build
-	provision_public_key
-	echo "Test container is ready."
+	for service in "${SERVICES[@]}"; do
+		provision_public_key "${service}"
+	done
+	echo "Test containers are ready."
 	echo "Use key: ${KEY_PATH}"
+	echo "  sshd        (debian/apt) -> localhost:2223"
+	echo "  sshd-alpine (alpine/apk) -> localhost:2224"
 	echo "Example: bull plan ${SCRIPT_DIR}/config/infra.lua"
 }
 
@@ -63,7 +69,8 @@ cmd_reset() {
 }
 
 cmd_logs() {
-	docker compose -f "${SCRIPT_DIR}/docker-compose.yml" logs -f sshd
+	local service="${1:-}"
+	docker compose -f "${SCRIPT_DIR}/docker-compose.yml" logs -f ${service}
 }
 
 COMMAND="${1:-up}"
@@ -79,7 +86,7 @@ case "${COMMAND}" in
 		cmd_reset
 		;;
 	logs)
-		cmd_logs
+		cmd_logs "${2:-}"
 		;;
 	-h|--help|help)
 		usage
