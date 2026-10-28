@@ -62,11 +62,19 @@ func orphanedPlans(state State, reg *luaruntime.Registry) []ResourcePlan {
 	return plans
 }
 
-// buildState constructs the state to persist after a successful apply.
-// Current resources are always included. Orphaned resources are kept unless prune is set.
-func buildState(reg *luaruntime.Registry, orphans []ResourcePlan, prune bool) State {
+// buildState constructs the state to persist after an apply.
+// Current resources are included unless they failed (or were skipped) and
+// weren't already tracked. Orphaned resources are kept unless prune is set.
+func buildState(reg *luaruntime.Registry, prev State, orphans []ResourcePlan, prune bool, failed map[string]bool) State {
+	tracked := make(map[string]bool, len(prev.Resources))
+	for _, sr := range prev.Resources {
+		tracked[sr.ID] = true
+	}
 	var resources []StateResource
 	for _, r := range reg.Resources {
+		if failed[r.ID] && !tracked[r.ID] {
+			continue
+		}
 		resources = append(resources, StateResource{ID: r.ID, Type: r.Type})
 	}
 	if !prune {

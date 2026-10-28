@@ -2,7 +2,9 @@ package engine
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -14,13 +16,14 @@ import (
 type Engine struct {
 	Verbose bool
 	Secrets map[string]string
+	Stdin   io.Reader // source for the apply confirmation prompt
 }
 
 func New(verbose bool, secrets map[string]string) *Engine {
 	if secrets == nil {
 		secrets = map[string]string{}
 	}
-	return &Engine{Verbose: verbose, Secrets: secrets}
+	return &Engine{Verbose: verbose, Secrets: secrets, Stdin: os.Stdin}
 }
 
 func (e *Engine) Plan(filePath string) error {
@@ -68,7 +71,7 @@ func (e *Engine) Apply(filePath string, autoApprove bool, prune bool) error {
 	changes := filterChanges(plans)
 	if len(changes) == 0 && len(orphans) == 0 {
 		fmt.Println("\nNothing to apply.")
-		return writeState(statePath, buildState(reg, orphans, prune))
+		return writeState(statePath, buildState(reg, state, orphans, prune, nil))
 	}
 
 	if len(orphans) > 0 && !prune {
@@ -82,12 +85,12 @@ func (e *Engine) Apply(filePath string, autoApprove bool, prune bool) error {
 		} else {
 			fmt.Println("\nNothing to apply.")
 		}
-		return writeState(statePath, buildState(reg, orphans, prune))
+		return writeState(statePath, buildState(reg, state, orphans, prune, nil))
 	}
 
 	if !autoApprove {
 		fmt.Printf("\nApply %d change(s)? [y/N]: ", len(changes))
-		reader := bufio.NewReader(os.Stdin)
+		reader := bufio.NewReader(e.Stdin)
 		line, _ := reader.ReadString('\n')
 		if strings.TrimSpace(strings.ToLower(line)) != "y" {
 			fmt.Println("Aborted.")
@@ -95,11 +98,13 @@ func (e *Engine) Apply(filePath string, autoApprove bool, prune bool) error {
 		}
 	}
 
-	if err := applyAll(reg, changes); err != nil {
-		return err
+	// Persist state even when some resources failed, so everything that did
+	// apply is tracked (and can be detected as orphaned later).
+	failed, applyErr := applyAll(reg, changes)
+	if err := writeState(statePath, buildState(reg, state, orphans, prune, failed)); err != nil {
+		return errors.Join(applyErr, err)
 	}
-
-	return writeState(statePath, buildState(reg, orphans, prune))
+	return applyErr
 }
 
 func (e *Engine) Validate(filePath string) error {
@@ -189,8 +194,9 @@ func parsePlanResult(id, resType string, v lua.LValue) ResourcePlan {
 }
 
 // applyAll calls the apply function for each changed resource.
-// Resources whose dependencies failed are skipped.
-func applyAll(reg *luaruntime.Registry, plans []ResourcePlan) error {
+// Resources whose dependencies failed are skipped. Returns the IDs of failed
+// and skipped resources.
+func applyAll(reg *luaruntime.Registry, plans []ResourcePlan) (map[string]bool, error) {
 	L := reg.L
 	// Build a map from resource ID to the Resource struct for apply functions
 	byID := make(map[string]*luaruntime.Resource, len(reg.Resources))
@@ -234,9 +240,9 @@ func applyAll(reg *luaruntime.Registry, plans []ResourcePlan) error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("%d resource(s) failed:\n  %s", len(errs), strings.Join(errs, "\n  "))
+		return failed, fmt.Errorf("%d resource(s) failed:\n  %s", len(errs), strings.Join(errs, "\n  "))
 	}
-	return nil
+	return failed, nil
 }
 
 func filterChanges(plans []ResourcePlan) []ResourcePlan {
