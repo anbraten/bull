@@ -2,6 +2,15 @@
 
 Stupid simple infrastructure management with Lua.
 
+## Why
+
+A lightweight alternative to Ansible and Terraform, taking the good parts of both:
+
+- **From Ansible:** push config over plain SSH, no agents. Deploying Docker Compose projects to a few hosts is the main use case.
+- **From Terraform:** `bull plan` shows exactly what will change before anything is applied. When you bump a version, you see which stacks it touches instead of guessing or running everything.
+- **Easy:** a single binary and plain Lua configs. Resources are small Lua modules, simple enough to write or extend with AI.
+- **Fast:** a full plan should take seconds, so you never need tags or partial runs just to save time.
+
 ## Features
 
 - Plan with readable diffs before changes
