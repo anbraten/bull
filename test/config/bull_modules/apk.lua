@@ -9,6 +9,7 @@
 function apk(id, opts)
   assert(type(id) == "string", "apk: id must be a string")
   assert(type(opts) == "table", "apk: opts must be a table")
+  _validate_opts("apk", id, opts, { "host", "packages", "package", "update", "repository", "depends_on" })
   local h = opts.host
   assert(h and h ~= "", "apk " .. id .. ": host is required")
 

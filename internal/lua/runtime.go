@@ -20,6 +20,7 @@ var stdlibFS embed.FS
 
 // stdlibOrder lists the core embedded modules loaded before any user config.
 var stdlibOrder = []string{
+	"stdlib/utils.lua",
 	"stdlib/shell.lua",
 	"stdlib/file.lua",
 	"stdlib/docker_compose.lua",

@@ -65,10 +65,10 @@ function webapp(name, opts)
     creates = "/opt/" .. name,
   })
   docker_compose(name, {
-    host    = opts.host,
-    dir     = "/opt/" .. name,
-    compose = opts.compose,
-    depends = { name .. "-dir1" },
+    host       = opts.host,
+    dir        = "/opt/" .. name,
+    compose    = opts.compose,
+    depends_on = { name .. "-dir" },
   })
 end
 

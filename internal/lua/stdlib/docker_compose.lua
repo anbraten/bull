@@ -11,6 +11,7 @@
 function docker_compose(id, opts)
   assert(type(id) == "string", "docker_compose: id must be a string")
   assert(type(opts) == "table", "docker_compose: opts must be a table")
+  _validate_opts("docker_compose", id, opts, { "host", "dir", "directory", "compose_file", "file", "compose", "env_file", "env", "depends_on" })
   local h = opts.host
   assert(h and h ~= "", "docker_compose " .. id .. ": host is required")
   local dir = opts.dir or opts.directory

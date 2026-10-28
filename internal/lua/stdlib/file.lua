@@ -10,6 +10,7 @@
 function file(id, opts)
   assert(type(id) == "string", "file: id must be a string")
   assert(type(opts) == "table", "file: opts must be a table")
+  _validate_opts("file", id, opts, { "host", "path", "remote_path", "content", "local_path", "src", "mode", "depends_on" })
   local h = opts.host
   assert(h and h ~= "", "file " .. id .. ": host is required")
   local remote = opts.path or opts.remote_path

@@ -8,6 +8,7 @@
 function apt(id, opts)
   assert(type(id) == "string", "apt: id must be a string")
   assert(type(opts) == "table", "apt: opts must be a table")
+  _validate_opts("apt", id, opts, { "host", "packages", "package", "update", "depends_on" })
   local h = opts.host
   assert(h and h ~= "", "apt " .. id .. ": host is required")
 

@@ -9,6 +9,7 @@
 function shell(id, opts)
   assert(type(id) == "string", "shell: id must be a string")
   assert(type(opts) == "table", "shell: opts must be a table")
+  _validate_opts("shell", id, opts, { "host", "command", "cmd", "run", "creates", "unless", "depends_on" })
   local h = opts.host
   assert(h and h ~= "", "shell " .. id .. ": host is required")
   local cmd = opts.command or opts.cmd or opts.run
