@@ -15,3 +15,18 @@ function _validate_opts(fn_name, id, opts, known_keys)
     error(fn_name .. " " .. id .. ": unknown option(s): " .. table.concat(unknown_list, ", "))
   end
 end
+
+-- _remote_file_info(host, path) → { hash = <sha256 hex>, mode = "644" } or nil
+-- Returns nil if the path is not a regular file. Raises on SSH failure or if
+-- the file can't be read (e.g. permission denied).
+function _remote_file_info(h, path)
+  local p = q(path)
+  local out, code, err = ssh_exec(h,
+    "if [ -f " .. p .. " ]; then sha256sum " .. p .. " && stat -c %a " .. p .. "; else echo missing; fi")
+  if err ~= "" then error("cannot reach host '" .. h .. "': " .. err) end
+  if code ~= 0 then error("inspect " .. path .. ": " .. out) end
+  if out == "missing" then return nil end
+  local hash, mode = out:match("^(%x+)%s+[^\n]*\n(%d+)$")
+  if not hash then error("inspect " .. path .. ": unexpected output: " .. out) end
+  return { hash = hash, mode = mode }
+end

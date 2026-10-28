@@ -30,39 +30,32 @@ function file(id, opts)
     depends_on = opts.depends_on,
 
     plan = function()
-      local desired = get_content()
-      local desired_hash = sha256(desired):sub(1, 12)
+      local desired_hash = sha256(get_content())
+      local desired_mode = string.format("%o", mode)
 
-      -- Check if file exists
-      local _, code, err = ssh_exec(h, "test -f " .. q(remote))
-      if err ~= "" then
-        error("cannot reach host '" .. h .. "': " .. err)
-      end
-
-      if code ~= 0 then
+      local current = _remote_file_info(h, remote)
+      if not current then
         return {
           change = "create",
           diffs = {
             { field = "path",         after = remote },
-            { field = "content_hash", after = desired_hash },
+            { field = "content_hash", after = desired_hash:sub(1, 12) },
+            { field = "mode",         after = desired_mode },
           },
         }
       end
 
-      -- Compare hashes
-      local current_hash, _, _ = ssh_exec(h, "sha256sum " .. q(remote) .. " | cut -d' ' -f1")
-      current_hash = current_hash:sub(1, 12)
-
-      if current_hash == desired_hash then
+      local diffs = {}
+      if current.hash ~= desired_hash then
+        table.insert(diffs, { field = "content_hash", before = current.hash:sub(1, 12), after = desired_hash:sub(1, 12) })
+      end
+      if current.mode ~= desired_mode then
+        table.insert(diffs, { field = "mode", before = current.mode, after = desired_mode })
+      end
+      if #diffs == 0 then
         return { change = "no-op" }
       end
-
-      return {
-        change = "update",
-        diffs = {
-          { field = "content_hash", before = current_hash, after = desired_hash },
-        },
-      }
+      return { change = "update", diffs = diffs }
     end,
 
     apply = function()

@@ -22,17 +22,25 @@ function apt(id, opts)
   end
   assert(#pkgs > 0, "apt " .. id .. ": packages list is empty")
 
+  local function quote_all(list)
+    local out = {}
+    for i, pkg in ipairs(list) do out[i] = q(pkg) end
+    return out
+  end
+  local quoted = quote_all(pkgs)
+
   -- Check which packages from the list are currently installed.
-  -- dpkg-query exits non-zero when any package is missing, so we suppress the
-  -- exit code and parse stdout for what's installed.
+  -- dpkg-query exits non-zero when any package is unknown, so we suppress the
+  -- exit code and parse stdout. Removed packages are still listed (status
+  -- "rc"/"un"), so only "ii" counts as installed.
   local function missing_packages()
-    local list = table.concat(pkgs, " ")
-    local out, _, err = ssh_exec(h, "dpkg-query -W -f '${Package}\\n' " .. list .. " 2>/dev/null; true")
+    local out, _, err = ssh_exec(h, "dpkg-query -W -f '${Package} ${db:Status-Abbrev}\\n' "
+      .. table.concat(quoted, " ") .. " 2>/dev/null; true")
     if err ~= "" then error("cannot reach host '" .. h .. "': " .. err) end
 
     local installed = {}
-    for pkg in (out .. "\n"):gmatch("([^\n]+)\n") do
-      if pkg ~= "" then installed[pkg] = true end
+    for pkg, status in out:gmatch("([^%s]+) (%S+)") do
+      if status:sub(1, 2) == "ii" then installed[pkg] = true end
     end
 
     local missing = {}
@@ -72,7 +80,7 @@ function apt(id, opts)
       if #missing == 0 then return end
 
       local cmd = "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "
-        .. table.concat(missing, " ") .. " 2>&1"
+        .. table.concat(quote_all(missing), " ") .. " 2>&1"
       local out, code, err = ssh_exec(h, cmd)
       if err ~= "" then error(err) end
       if code ~= 0 then error("apt-get install failed:\n" .. out) end

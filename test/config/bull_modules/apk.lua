@@ -23,10 +23,17 @@ function apk(id, opts)
   end
   assert(#pkgs > 0, "apk " .. id .. ": packages list is empty")
 
+  local function quote_all(list)
+    local out = {}
+    for i, pkg in ipairs(list) do out[i] = q(pkg) end
+    return out
+  end
+  local quoted = quote_all(pkgs)
+
   -- apk info -e exits 0 only if ALL packages are installed.
   -- We check each individually so we can report which are missing.
   local function missing_packages()
-    local check = "for p in " .. table.concat(pkgs, " ")
+    local check = "for p in " .. table.concat(quoted, " ")
       .. "; do apk info -e \"$p\" > /dev/null 2>&1 && echo \"$p\"; done"
     local out, _, err = ssh_exec(h, check)
     if err ~= "" then error("cannot reach host '" .. h .. "': " .. err) end
@@ -80,7 +87,7 @@ function apk(id, opts)
       if #missing == 0 then return end
 
       local out, code, err = ssh_exec(h,
-        "apk add -q " .. table.concat(missing, " ") .. " 2>&1")
+        "apk add -q " .. table.concat(quote_all(missing), " ") .. " 2>&1")
       if err ~= "" then error(err) end
       if code ~= 0 then error("apk add failed:\n" .. out) end
     end,

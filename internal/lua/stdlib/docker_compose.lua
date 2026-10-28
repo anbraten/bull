@@ -20,6 +20,7 @@ function docker_compose(id, opts)
     "docker_compose " .. id .. ": compose or compose_file is required")
 
   local remote_compose = dir .. "/docker-compose.yml"
+  local remote_env = dir .. "/.env"
 
   local function get_compose()
     if opts.compose then return opts.compose end
@@ -31,7 +32,7 @@ function docker_compose(id, opts)
     if opts.env then
       local lines = {}
       for k, v in pairs(opts.env) do
-        table.insert(lines, k .. "=" .. v)
+        table.insert(lines, k .. "=" .. tostring(v))
       end
       table.sort(lines)
       return table.concat(lines, "\n") .. "\n"
@@ -44,40 +45,40 @@ function docker_compose(id, opts)
     depends_on = opts.depends_on,
 
     plan = function()
-      local desired = get_compose()
-      local desired_hash = sha256(desired):sub(1, 12)
+      local desired_hash = sha256(get_compose())
+      local env_content = get_env_content()
 
-      -- Check if compose file exists on remote
-      local _, code, err = ssh_exec(h, "test -f " .. q(remote_compose))
-      if err ~= "" then
-        error("cannot reach host '" .. h .. "': " .. err)
-      end
-
-      if code ~= 0 then
-        return {
-          change = "create",
-          diffs = {
-            { field = "host",         after = h },
-            { field = "dir",          after = dir },
-            { field = "compose_hash", after = desired_hash },
-          },
+      local current = _remote_file_info(h, remote_compose)
+      if not current then
+        local diffs = {
+          { field = "host",         after = h },
+          { field = "dir",          after = dir },
+          { field = "compose_hash", after = desired_hash:sub(1, 12) },
         }
+        if env_content then
+          table.insert(diffs, { field = "env_hash", after = sha256(env_content):sub(1, 12) })
+        end
+        return { change = "create", diffs = diffs }
       end
 
-      -- Compare hashes
-      local current_hash, _, _ = ssh_exec(h, "sha256sum " .. q(remote_compose) .. " | cut -d' ' -f1")
-      current_hash = current_hash:sub(1, 12)
+      local diffs = {}
+      if current.hash ~= desired_hash then
+        table.insert(diffs, { field = "compose_hash", before = current.hash:sub(1, 12), after = desired_hash:sub(1, 12) })
+      end
+      -- Only compare .env when bull manages it.
+      if env_content then
+        local desired_env = sha256(env_content)
+        local current_env = _remote_file_info(h, remote_env)
+        local before = current_env and current_env.hash:sub(1, 12) or nil
+        if not current_env or current_env.hash ~= desired_env then
+          table.insert(diffs, { field = "env_hash", before = before, after = desired_env:sub(1, 12) })
+        end
+      end
 
-      if current_hash == desired_hash then
+      if #diffs == 0 then
         return { change = "no-op" }
       end
-
-      return {
-        change = "update",
-        diffs = {
-          { field = "compose_hash", before = current_hash, after = desired_hash },
-        },
-      }
+      return { change = "update", diffs = diffs }
     end,
 
     apply = function()
@@ -94,7 +95,7 @@ function docker_compose(id, opts)
       -- Upload .env if provided
       local env_content = get_env_content()
       if env_content then
-        upload_err = ssh_upload(h, dir .. "/.env", env_content, 0x180) -- 0600
+        upload_err = ssh_upload(h, remote_env, env_content, 0x180) -- 0600
         if upload_err ~= "" then error("upload .env: " .. upload_err) end
       end
 
