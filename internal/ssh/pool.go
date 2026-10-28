@@ -83,7 +83,10 @@ func (p *Pool) client(hostName string) (*gossh.Client, error) {
 		p.errors[hostName] = err
 		return nil, fmt.Errorf("connect to %s: %w", addr, err)
 	}
+	// Bound the handshake so an unresponsive sshd can't hang the whole run.
+	_ = conn.SetDeadline(time.Now().Add(15 * time.Second))
 	sshConn, chans, reqs, err := gossh.NewClientConn(conn, addr, cfg)
+	_ = conn.SetDeadline(time.Time{})
 	if err != nil {
 		conn.Close()
 		p.errors[hostName] = err
@@ -185,8 +188,13 @@ func (p *Pool) Upload(hostName, remotePath string, content []byte, mode os.FileM
 		if err != nil {
 			return err
 		}
-		_ = mkdirSess.Run(fmt.Sprintf("mkdir -p %q", dir))
+		var out bytes.Buffer
+		mkdirSess.Stderr = &out
+		err = mkdirSess.Run("mkdir -p " + ShellQuote(dir))
 		mkdirSess.Close()
+		if err != nil {
+			return fmt.Errorf("mkdir %s: %w: %s", dir, err, strings.TrimSpace(out.String()))
+		}
 	}
 
 	sess, err := client.NewSession()
@@ -195,10 +203,13 @@ func (p *Pool) Upload(hostName, remotePath string, content []byte, mode os.FileM
 	}
 	defer sess.Close()
 
+	var errBuf bytes.Buffer
 	sess.Stdin = bytes.NewReader(content)
-	cmd := fmt.Sprintf("cat > %q && chmod %04o %q", remotePath, mode, remotePath)
+	sess.Stderr = &errBuf
+	qp := ShellQuote(remotePath)
+	cmd := fmt.Sprintf("cat > %s && chmod %04o %s", qp, mode, qp)
 	if err := sess.Run(cmd); err != nil {
-		return fmt.Errorf("upload to %s: %w", remotePath, err)
+		return fmt.Errorf("upload to %s: %w: %s", remotePath, err, strings.TrimSpace(errBuf.String()))
 	}
 	return nil
 }
@@ -218,7 +229,7 @@ func (p *Pool) Download(hostName, remotePath string) ([]byte, error) {
 
 	var buf bytes.Buffer
 	sess.Stdout = &buf
-	if err := sess.Run(fmt.Sprintf("cat %q", remotePath)); err != nil {
+	if err := sess.Run("cat " + ShellQuote(remotePath)); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -226,7 +237,7 @@ func (p *Pool) Download(hostName, remotePath string) ([]byte, error) {
 
 // FileExists checks if a remote path exists.
 func (p *Pool) FileExists(hostName, remotePath string) (bool, error) {
-	stdout, _, err := p.RunOutput(hostName, fmt.Sprintf("test -e %q && echo yes || echo no", remotePath))
+	stdout, _, err := p.RunOutput(hostName, "test -e " + ShellQuote(remotePath) + " && echo yes || echo no")
 	if err != nil {
 		return false, err
 	}
@@ -273,18 +284,14 @@ func buildSSHConfig(h *Host) (*gossh.ClientConfig, error) {
 		return nil, fmt.Errorf("no authentication method for host %q", h.Name)
 	}
 
-	insecureCallback := gossh.HostKeyCallback(func(hostname string, remote net.Addr, key gossh.PublicKey) error {
-		return nil
-	})
 	var hostKeyCallback gossh.HostKeyCallback
 	if h.Insecure {
-		hostKeyCallback = insecureCallback
+		hostKeyCallback = gossh.InsecureIgnoreHostKey()
 	} else {
 		var err error
 		hostKeyCallback, err = buildHostKeyCallback()
 		if err != nil {
-			// Fall back to insecure if known_hosts not available
-			hostKeyCallback = insecureCallback
+			return nil, fmt.Errorf("host key verification: %w (add the host to known_hosts or set insecure = true)", err)
 		}
 	}
 
@@ -318,6 +325,11 @@ func buildHostKeyCallback() (gossh.HostKeyCallback, error) {
 		return nil, err
 	}
 	return knownhosts.New(knownHostsFile)
+}
+
+// ShellQuote wraps s in single quotes so a POSIX shell treats it literally.
+func ShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func expandHome(path string) string {

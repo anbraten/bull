@@ -331,9 +331,7 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 
 	// q(str) → single-quoted shell-safe string
 	L.SetGlobal("q", L.NewFunction(func(L *lua.LState) int {
-		s := L.CheckString(1)
-		escaped := strings.ReplaceAll(s, "'", `'\''`)
-		L.Push(lua.LString("'" + escaped + "'"))
+		L.Push(lua.LString(sshpool.ShellQuote(L.CheckString(1))))
 		return 1
 	}))
 }
