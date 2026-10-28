@@ -5,6 +5,7 @@ import (
 )
 
 var autoApprove bool
+var prune bool
 
 var applyCmd = &cobra.Command{
 	Use:   "apply [file]",
@@ -16,11 +17,12 @@ var applyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return eng.Apply(file, autoApprove)
+		return eng.Apply(file, autoApprove, prune)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(applyCmd)
 	applyCmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "Skip confirmation prompt")
+	applyCmd.Flags().BoolVar(&prune, "prune", false, "Remove orphaned resources from state (does not delete from infrastructure)")
 }

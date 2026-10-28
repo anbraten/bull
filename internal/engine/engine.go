@@ -31,12 +31,19 @@ func (e *Engine) Plan(filePath string) error {
 	defer reg.Close()
 	defer reg.Pool().Close()
 
+	statePath := stateFilePath(filePath)
+	state, err := loadState(statePath)
+	if err != nil {
+		return err
+	}
+
 	plans := planAll(reg)
+	plans = append(plans, orphanedPlans(state, reg)...)
 	printPlans(plans, e.Secrets)
 	return firstPlanError(plans)
 }
 
-func (e *Engine) Apply(filePath string, autoApprove bool) error {
+func (e *Engine) Apply(filePath string, autoApprove bool, prune bool) error {
 	reg, err := luaruntime.Eval(filePath, e.Verbose, e.Secrets)
 	if err != nil {
 		return err
@@ -44,17 +51,38 @@ func (e *Engine) Apply(filePath string, autoApprove bool) error {
 	defer reg.Close()
 	defer reg.Pool().Close()
 
+	statePath := stateFilePath(filePath)
+	state, err := loadState(statePath)
+	if err != nil {
+		return err
+	}
+
 	plans := planAll(reg)
-	printPlans(plans, e.Secrets)
+	orphans := orphanedPlans(state, reg)
+	printPlans(append(plans, orphans...), e.Secrets)
 
 	if err := firstPlanError(plans); err != nil {
 		return err
 	}
 
 	changes := filterChanges(plans)
-	if len(changes) == 0 {
+	if len(changes) == 0 && len(orphans) == 0 {
 		fmt.Println("\nNothing to apply.")
-		return nil
+		return writeState(statePath, buildState(reg, orphans, prune))
+	}
+
+	if len(orphans) > 0 && !prune {
+		fmt.Printf("\n%s %d orphaned resource(s) cannot be auto-deleted (use --prune to remove from state).\n",
+			yellow("!"), len(orphans))
+	}
+
+	if len(changes) == 0 {
+		if prune && len(orphans) > 0 {
+			fmt.Printf("\nRemoving %d orphaned resource(s) from state.\n", len(orphans))
+		} else {
+			fmt.Println("\nNothing to apply.")
+		}
+		return writeState(statePath, buildState(reg, orphans, prune))
 	}
 
 	if !autoApprove {
@@ -67,7 +95,11 @@ func (e *Engine) Apply(filePath string, autoApprove bool) error {
 		}
 	}
 
-	return applyAll(reg, changes)
+	if err := applyAll(reg, changes); err != nil {
+		return err
+	}
+
+	return writeState(statePath, buildState(reg, orphans, prune))
 }
 
 func (e *Engine) Validate(filePath string) error {
@@ -77,8 +109,6 @@ func (e *Engine) Validate(filePath string) error {
 	}
 	defer reg.Close()
 	defer reg.Pool().Close()
-
-	// TODO: check dependsOn references and cycles before calling plan functions?
 
 	sorted, err := topoSort(reg.Resources)
 	if err != nil {
