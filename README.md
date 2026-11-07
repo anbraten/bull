@@ -18,6 +18,8 @@ A lightweight alternative to Ansible and Terraform, taking the good parts of bot
 - Module-style resources, e.g. `file`, `apt`, `apk`, `docker_compose`
 - `bull_modules` autoloaded from your config directory
 
+See [docs/api.md](docs/api.md) for the full Lua API and how to write your own resource types.
+
 ## Example Lua config
 
 ```lua
