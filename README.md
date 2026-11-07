@@ -15,8 +15,9 @@ A lightweight alternative to Ansible and Terraform, taking the good parts of bot
 
 - Plan with readable diffs before changes
 - Apply in dependency order
-- Module-style resources, e.g. `file`, `apt`, `apk`, `docker_compose`
-- `bull_modules` autoloaded from your config directory
+- Built-in `file` and `shell` resources
+- `bull_modules` autoloaded from your config directory; copy ready-made ones
+  like `docker_compose`, `apt` or `apk` from [`test/config/bull_modules`](test/config/bull_modules)
 
 See [docs/api.md](docs/api.md) for the full Lua API and how to write your own resource types.
 
@@ -49,6 +50,7 @@ apt("base-packages", {
   update   = true,
 })
 
+-- from bull_modules/docker_compose.lua
 docker_compose("myapp", {
   host = "test",
   dir  = "/opt/myapp",

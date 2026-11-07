@@ -3,8 +3,7 @@
 A bull config is a plain Lua file. The API has two parts:
 
 - **Config globals** for writing configs: `host`, `env`, `secret`, and the
-  resource types (`file`, `shell`, `docker_compose`, plus anything from
-  `bull_modules`).
+  resource types (`file`, `shell`, plus anything from `bull_modules`).
 - **The `bull` table** for writing your own resource types:
   `bull.resource`, `bull.ssh.*`, `bull.exec`, and helpers.
 
@@ -86,6 +85,12 @@ Runs a command on the host.
 
 If neither guard is set, the command runs on every apply.
 
+## Example modules
+
+These live in [`test/config/bull_modules/`](../test/config/bull_modules) and
+are not built in. Copy the ones you need into your own `bull_modules/` and
+adapt them: `docker_compose`, `apt`, `apk`, `hetzner_dns`.
+
 ### `docker_compose(id, opts)`
 
 Uploads a compose project and runs `docker compose up -d --remove-orphans --pull always`.
@@ -100,12 +105,20 @@ Uploads a compose project and runs `docker compose up -d --remove-orphans --pull
 
 One of `compose` or `compose_file` is required.
 
+The module pulls images on every apply (`--pull always`) and removes orphaned
+containers. Edit your copy if you want different behavior.
+
 ## Writing resource types
 
 A resource type is just a Lua function that validates its options and calls
 `bull.resource`. Put it in `bull_modules/<name>.lua` next to your config. Every
 `*.lua` file in that directory is loaded automatically in alphabetical order
 before the config runs, and `require("<name>")` resolves from there too.
+
+A module or config may redefine an existing global, e.g. to replace the
+built-in `file` with your own. Bull allows it but prints a warning such as
+`warning: bull_modules/file.lua overrides "file" from built-in`, so accidental
+overrides (two modules both defining `apt`) don't go unnoticed.
 
 ### `bull.resource(id, def)`
 
@@ -229,5 +242,6 @@ function apt(id, opts)
 end
 ```
 
-See `test/config/bull_modules/` for more complete modules, including
-`hetzner_dns.lua`, which talks to an HTTP API through `bull.exec` and `curl`.
+See `test/config/bull_modules/` for more complete modules: `docker_compose.lua`
+for a multi-file resource, and `hetzner_dns.lua`, which talks to an HTTP API
+through `bull.exec` and `curl`.
