@@ -16,6 +16,7 @@ type Diff struct {
 	Field  string
 	Before string
 	After  string
+	Text   bool // Before/After are full file contents; render as a line diff
 }
 
 type ResourcePlan struct {

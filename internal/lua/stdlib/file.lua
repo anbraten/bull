@@ -30,7 +30,7 @@ function file(id, opts)
     depends_on = opts.depends_on,
 
     plan = function()
-      local desired_hash = sha256(get_content())
+      local content = get_content()
       local desired_mode = string.format("%o", mode)
 
       local current = _remote_file_info(h, remote)
@@ -38,17 +38,16 @@ function file(id, opts)
         return {
           change = "create",
           diffs = {
-            { field = "path",         after = remote },
-            { field = "content_hash", after = desired_hash:sub(1, 12) },
-            { field = "mode",         after = desired_mode },
+            { field = "path", after = remote },
+            _content_diff("content", h, remote, nil, content),
+            { field = "mode", after = desired_mode },
           },
         }
       end
 
       local diffs = {}
-      if current.hash ~= desired_hash then
-        table.insert(diffs, { field = "content_hash", before = current.hash:sub(1, 12), after = desired_hash:sub(1, 12) })
-      end
+      local content_diff = _content_diff("content", h, remote, current, content)
+      if content_diff then table.insert(diffs, content_diff) end
       if current.mode ~= desired_mode then
         table.insert(diffs, { field = "mode", before = current.mode, after = desired_mode })
       end

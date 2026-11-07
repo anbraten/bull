@@ -227,10 +227,11 @@ func (p *Pool) Download(hostName, remotePath string) ([]byte, error) {
 	}
 	defer sess.Close()
 
-	var buf bytes.Buffer
+	var buf, errBuf bytes.Buffer
 	sess.Stdout = &buf
+	sess.Stderr = &errBuf
 	if err := sess.Run("cat " + ShellQuote(remotePath)); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read %s: %w: %s", remotePath, err, strings.TrimSpace(errBuf.String()))
 	}
 	return buf.Bytes(), nil
 }

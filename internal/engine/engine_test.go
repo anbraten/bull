@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	luaruntime "github.com/anbraten/bull/internal/lua"
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -260,4 +261,20 @@ func TestParsePlanResult(t *testing.T) {
 			t.Errorf("got %+v", p)
 		}
 	})
+}
+
+func TestSecretDefaultsAreRedacted(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "infra.lua")
+	if err := os.WriteFile(cfg, []byte(`local pw = secret("db", "fallback-pw")`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := luaruntime.Eval(cfg, false, map[string]string{"api": "from-store"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	got := redactSecrets("db=fallback-pw api=from-store", New(false, map[string]string{"api": "from-store"}).redactions(reg))
+	if got != "db=[REDACTED] api=[REDACTED]" {
+		t.Errorf("got %q", got)
+	}
 }

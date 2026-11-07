@@ -23,6 +23,13 @@ function ssh_exec(h, cmd)
   end
   return local_exec(cmd .. " 2>&1")
 end
+function ssh_read(h, path)
+  local f, err = io.open(path, "rb")
+  if not f then return "", err end
+  local data = f:read("*a")
+  f:close()
+  return data, ""
+end
 function ssh_upload(h, path, content, mode)
   local dir = path:match("^(.*)/[^/]*$")
   local _, code = local_exec("mkdir -p " .. q(dir))
@@ -99,7 +106,7 @@ func TestFileLifecycleLocal(t *testing.T) {
 	}
 
 	cfg := write("hello\n", "0644")
-	expectChange(t, planConfig(t, cfg)["f"], ChangeCreate, "path", "content_hash", "mode")
+	expectChange(t, planConfig(t, cfg)["f"], ChangeCreate, "path", "content", "mode")
 	applyConfig(t, cfg)
 	if data, _ := os.ReadFile(target); string(data) != "hello\n" {
 		t.Fatalf("content = %q", data)
@@ -107,10 +114,14 @@ func TestFileLifecycleLocal(t *testing.T) {
 	expectChange(t, planConfig(t, cfg)["f"], ChangeNoOp)
 
 	cfg = write("changed\n", "0644")
-	expectChange(t, planConfig(t, cfg)["f"], ChangeUpdate, "content_hash")
+	p := planConfig(t, cfg)["f"]
+	expectChange(t, p, ChangeUpdate, "content")
+	if d := p.Diffs[0]; !d.Text || d.Before != "hello\n" || d.After != "changed\n" {
+		t.Errorf("content diff = %+v", d)
+	}
 
 	cfg = write("hello\n", "0600")
-	p := planConfig(t, cfg)["f"]
+	p = planConfig(t, cfg)["f"]
 	expectChange(t, p, ChangeUpdate, "mode")
 	if p.Diffs[0].Before != "644" || p.Diffs[0].After != "600" {
 		t.Errorf("mode diff = %+v", p.Diffs[0])
@@ -177,7 +188,7 @@ func TestDockerComposeDetectsEnvChanges(t *testing.T) {
 	}
 
 	cfg := write("services: {}\n", `{ VERSION = "1", DEBUG = true }`)
-	expectChange(t, planConfig(t, cfg)["app"], ChangeCreate, "host", "dir", "compose_hash", "env_hash")
+	expectChange(t, planConfig(t, cfg)["app"], ChangeCreate, "host", "dir", "compose", "env")
 	applyConfig(t, cfg)
 	env, _ := os.ReadFile(filepath.Join(dir, ".env"))
 	if string(env) != "DEBUG=true\nVERSION=1\n" {
@@ -190,10 +201,10 @@ func TestDockerComposeDetectsEnvChanges(t *testing.T) {
 
 	// Env-only change must trigger an update.
 	cfg = write("services: {}\n", `{ VERSION = "2", DEBUG = true }`)
-	expectChange(t, planConfig(t, cfg)["app"], ChangeUpdate, "env_hash")
+	expectChange(t, planConfig(t, cfg)["app"], ChangeUpdate, "env")
 
 	cfg = write("services: { a: {} }\n", `{ VERSION = "1", DEBUG = true }`)
-	expectChange(t, planConfig(t, cfg)["app"], ChangeUpdate, "compose_hash")
+	expectChange(t, planConfig(t, cfg)["app"], ChangeUpdate, "compose")
 
 	// Unmanaged .env is ignored.
 	cfg = write("services: {}\n", "")
@@ -202,5 +213,39 @@ func TestDockerComposeDetectsEnvChanges(t *testing.T) {
 	// Deleted .env is detected.
 	cfg = write("services: {}\n", `{ VERSION = "1", DEBUG = true }`)
 	os.Remove(filepath.Join(dir, ".env"))
-	expectChange(t, planConfig(t, cfg)["app"], ChangeUpdate, "env_hash")
+	expectChange(t, planConfig(t, cfg)["app"], ChangeUpdate, "env")
+}
+
+func TestFileLargeContentFallsBackToHash(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "big")
+	big := strings.Repeat("x", 600*1024)
+	if err := os.WriteFile(target, []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := stdlibConfig(t, `file("f", { host = "h", path = `+luaStr(target)+`, content = string.rep("y", 600*1024) })`)
+	p := planConfig(t, cfg)["f"]
+	expectChange(t, p, ChangeUpdate, "content_hash")
+	if p.Diffs[0].Text {
+		t.Error("large file should not be a text diff")
+	}
+}
+
+func TestFullDiffLiftsSizeLimit(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "big")
+	if err := os.WriteFile(target, []byte(strings.Repeat("x\n", 300*1024)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := stdlibConfig(t, `file("f", { host = "h", path = `+luaStr(target)+`, content = string.rep("y\\n", 300*1024) })`)
+	eng := New(false, nil)
+	eng.FullDiff = true
+	reg, err := eng.eval(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reg.Close()
+	p := planAll(reg)[0]
+	expectChange(t, p, ChangeUpdate, "content")
+	if !p.Diffs[0].Text {
+		t.Error("with FullDiff, large file should be a text diff")
+	}
 }

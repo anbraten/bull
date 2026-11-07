@@ -41,6 +41,9 @@ type Registry struct {
 	Resources []*Resource
 	pool      *sshpool.Pool
 	L         *lua.LState // kept alive so plan/apply functions can be called
+	// SecretValues holds every value returned by secret(), including
+	// defaults, keyed by secret name. Output must redact these.
+	SecretValues map[string]string
 }
 
 func (r *Registry) Pool() *sshpool.Pool { return r.pool }
@@ -55,7 +58,7 @@ func Eval(filePath string, verbose bool, secrets map[string]string) (*Registry, 
 	}
 
 	pool := sshpool.NewPool()
-	reg := &Registry{pool: pool}
+	reg := &Registry{pool: pool, SecretValues: map[string]string{}}
 
 	L := lua.NewState()
 	reg.L = L
@@ -239,6 +242,25 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		return 1
 	}))
 
+	// ssh_read(host, remote_path) → content, err_msg
+	// Returns the file's raw bytes (unlike ssh_exec, nothing is trimmed).
+	L.SetGlobal("ssh_read", L.NewFunction(func(L *lua.LState) int {
+		hostName := L.CheckString(1)
+		path := L.CheckString(2)
+		verbosef("ssh_read(host=%q, path=%q)", hostName, path)
+		data, err := pool.Download(hostName, path)
+		if err != nil {
+			verbosef("ssh_read -> err_msg=%q", err.Error())
+			L.Push(lua.LString(""))
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		verbosef("ssh_read -> bytes=%d", len(data))
+		L.Push(lua.LString(data))
+		L.Push(lua.LString(""))
+		return 2
+	}))
+
 	// local_exec(cmd) → stdout, exit_code, err_msg
 	L.SetGlobal("local_exec", L.NewFunction(func(L *lua.LState) int {
 		cmdStr := L.CheckString(1)
@@ -271,11 +293,14 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 	L.SetGlobal("secret", L.NewFunction(func(L *lua.LState) int {
 		name := L.CheckString(1)
 		if val, ok := secrets[name]; ok {
+			reg.SecretValues[name] = val
 			L.Push(lua.LString(val))
 			return 1
 		}
 		if L.GetTop() >= 2 {
-			L.Push(lua.LString(L.OptString(2, "")))
+			val := L.OptString(2, "")
+			reg.SecretValues[name] = val
+			L.Push(lua.LString(val))
 			return 1
 		}
 		L.RaiseError("secret %q is not set", name)

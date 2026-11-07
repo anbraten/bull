@@ -17,11 +17,11 @@ shell("create-dir", {
 })
 
 -- Shell: always runs (no guard) — idempotent by nature
-shell("write-motd", {
-  host    = "test",
-  command = "echo 'managed by bull' > /etc/motd",
-  unless  = "grep -q 'managed by bull' /etc/motd 2>/dev/null",
-})
+-- shell("write-motd", {
+--   host    = "test",
+--   command = "echo 'managed by bull' > /etc/motd",
+--   unless  = "grep -q 'managed by bull' /etc/motd 2>/dev/null",
+-- })
 
 -- File upload
 file("config", {

@@ -67,44 +67,56 @@ services:
 
 ### bull plan infra.lua
 
+Changed files are shown as line diffs, with secret values redacted. New files
+are previewed up to 30 lines and files over 512 KiB are compared by hash only;
+pass `--full-diff` to show everything.
+
 ```text
 Plan
 
   ~ file.myapp-config
-    ~ path: /opt/myapp/nginx/default.conf
-    ~ content: old nginx config -> moin bull config
+    └─ content  +1 -1
+         @@ -1,5 +1,5 @@
+          server {
+         -  listen 80;
+         +  listen 8080;
+            location / {
+              return 200 'moin bull';
+              add_header Content-Type text/plain;
 
-  ~ apt.base-packages
-      + package curl
+  + apt.base-packages
+    └─ install  curl
 
-  + docker_compose.myapp
-    + service app with mounted nginx config
+  ~ docker_compose.myapp
+    ├─ compose  +1 -1
+    │    @@ -1,4 +1,4 @@
+    │     services:
+    │       app:
+    │    -    image: nginx:1.27-alpine
+    │    +    image: nginx:1.29-alpine
+    │         restart: unless-stopped
+    └─ env      +1 -1
+         @@ -1,2 +1,2 @@
+          DB_PASSWORD=[REDACTED]
+         -VERSION=1.27-alpine
+         +VERSION=1.29-alpine
 
-  1 to create  2 to update  0 unchanged  0 errors
+  ────────────────────────────────────────────────────
+  1 to create  ·  2 to update  ·  0 to delete  ·  0 unchanged
 ```
 
 ### bull apply infra.lua
 
+Prints the same plan, then asks for confirmation:
+
 ```text
-Plan
-
-  ~ file.myapp-config
-    ~ path: /opt/myapp/nginx/default.conf
-    ~ content: old nginx config -> moin bull config
-
-  ~ apt.base-packages
-      + package curl
-
-  + docker_compose.myapp
-    + service app with mounted nginx config
-
-  1 to create  2 to update  0 unchanged  0 errors
-
 Apply 3 change(s)? [y/N]: y
-  Updating file.moin...
-  ✓ file.moin
-  Updating apt.base-packages...
-  ✓ apt.base-packages
-  Creating docker_compose.myapp...
-  ✓ docker_compose.myapp
+  Updating  file.myapp-config
+  ✓  file.myapp-config
+
+  Creating  apt.base-packages
+  ✓  apt.base-packages
+
+  Updating  docker_compose.myapp
+  ✓  docker_compose.myapp
 ```

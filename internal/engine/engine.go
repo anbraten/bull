@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strings"
 
@@ -14,9 +15,10 @@ import (
 
 // Engine orchestrates plan and apply.
 type Engine struct {
-	Verbose bool
-	Secrets map[string]string
-	Stdin   io.Reader // source for the apply confirmation prompt
+	Verbose  bool
+	FullDiff bool // show complete diffs: no preview cutoff, no size limit
+	Secrets  map[string]string
+	Stdin    io.Reader // source for the apply confirmation prompt
 }
 
 func New(verbose bool, secrets map[string]string) *Engine {
@@ -27,7 +29,7 @@ func New(verbose bool, secrets map[string]string) *Engine {
 }
 
 func (e *Engine) Plan(filePath string) error {
-	reg, err := luaruntime.Eval(filePath, e.Verbose, e.Secrets)
+	reg, err := e.eval(filePath)
 	if err != nil {
 		return err
 	}
@@ -42,12 +44,12 @@ func (e *Engine) Plan(filePath string) error {
 
 	plans := planAll(reg)
 	plans = append(plans, orphanedPlans(state, reg)...)
-	printPlans(plans, e.Secrets)
+	printPlans(plans, e.redactions(reg), e.FullDiff)
 	return firstPlanError(plans)
 }
 
 func (e *Engine) Apply(filePath string, autoApprove bool, prune bool) error {
-	reg, err := luaruntime.Eval(filePath, e.Verbose, e.Secrets)
+	reg, err := e.eval(filePath)
 	if err != nil {
 		return err
 	}
@@ -62,7 +64,7 @@ func (e *Engine) Apply(filePath string, autoApprove bool, prune bool) error {
 
 	plans := planAll(reg)
 	orphans := orphanedPlans(state, reg)
-	printPlans(append(plans, orphans...), e.Secrets)
+	printPlans(append(plans, orphans...), e.redactions(reg), e.FullDiff)
 
 	if err := firstPlanError(plans); err != nil {
 		return err
@@ -124,6 +126,32 @@ func (e *Engine) Validate(filePath string) error {
 	return nil
 }
 
+// eval evaluates the config and applies engine-level settings to the Lua state.
+func (e *Engine) eval(filePath string) (*luaruntime.Registry, error) {
+	reg, err := luaruntime.Eval(filePath, e.Verbose, e.Secrets)
+	if err != nil {
+		return nil, err
+	}
+	if e.FullDiff {
+		// Plan functions read this at call time; lift the text diff size limit.
+		reg.L.SetGlobal("_MAX_TEXT_DIFF", lua.LNumber(math.Inf(1)))
+	}
+	return reg, nil
+}
+
+// redactions returns every secret value that must not appear in output:
+// the loaded secrets plus whatever secret() returned (including defaults).
+func (e *Engine) redactions(reg *luaruntime.Registry) map[string]string {
+	out := make(map[string]string, len(e.Secrets)+len(reg.SecretValues))
+	for k, v := range e.Secrets {
+		out[k] = v
+	}
+	for k, v := range reg.SecretValues {
+		out["used:"+k] = v
+	}
+	return out
+}
+
 // planAll sorts resources into dependency order, then calls each plan function.
 func planAll(reg *luaruntime.Registry) []ResourcePlan {
 	sorted, err := topoSort(reg.Resources)
@@ -179,6 +207,7 @@ func parsePlanResult(id, resType string, v lua.LValue) ResourcePlan {
 						Field:  lua.LVAsString(d.RawGetString("field")),
 						Before: lua.LVAsString(d.RawGetString("before")),
 						After:  lua.LVAsString(d.RawGetString("after")),
+						Text:   lua.LVAsBool(d.RawGetString("text")),
 					})
 				}
 			})

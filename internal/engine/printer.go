@@ -42,7 +42,7 @@ func resourceLabel(p ResourcePlan) string {
 }
 
 // printDiffTree renders diff lines with tree drawing characters and aligned fields.
-func printDiffTree(diffs []Diff, secrets map[string]string, change ChangeType) {
+func printDiffTree(diffs []Diff, secrets map[string]string, change ChangeType, full bool) {
 	if len(diffs) == 0 {
 		return
 	}
@@ -56,12 +56,26 @@ func printDiffTree(diffs []Diff, secrets map[string]string, change ChangeType) {
 	}
 
 	for i, d := range diffs {
+		last := i == len(diffs)-1
 		connector := faint("├─")
-		if i == len(diffs)-1 {
+		if last {
 			connector = faint("└─")
 		}
 		padding := strings.Repeat(" ", maxW-len(d.Field))
 		field := cyan(d.Field) + padding
+
+		if d.Text {
+			summary, body := textDiffLines(d, change, secrets, full)
+			fmt.Printf("    %s %s  %s\n", connector, field, summary)
+			rail := faint("│")
+			if last {
+				rail = " "
+			}
+			for _, line := range body {
+				fmt.Printf("    %s    %s\n", rail, line)
+			}
+			continue
+		}
 
 		switch change {
 		case ChangeCreate:
@@ -85,7 +99,7 @@ func printDiffTree(diffs []Diff, secrets map[string]string, change ChangeType) {
 	}
 }
 
-func printPlans(plans []ResourcePlan, secrets map[string]string) {
+func printPlans(plans []ResourcePlan, secrets map[string]string, full bool) {
 	creates, updates, deletes, noop, orphaned, errors := 0, 0, 0, 0, 0, 0
 	for _, p := range plans {
 		switch {
@@ -131,12 +145,12 @@ func printPlans(plans []ResourcePlan, secrets map[string]string) {
 
 		case p.Change == ChangeCreate:
 			fmt.Printf("  %s %s\n", green("+"), label)
-			printDiffTree(p.Diffs, secrets, ChangeCreate)
+			printDiffTree(p.Diffs, secrets, ChangeCreate, full)
 			fmt.Println()
 
 		case p.Change == ChangeUpdate:
 			fmt.Printf("  %s %s\n", yellow("~"), label)
-			printDiffTree(p.Diffs, secrets, ChangeUpdate)
+			printDiffTree(p.Diffs, secrets, ChangeUpdate, full)
 			fmt.Println()
 
 		case p.Change == ChangeDelete && p.Orphaned:
@@ -145,7 +159,7 @@ func printPlans(plans []ResourcePlan, secrets map[string]string) {
 
 		case p.Change == ChangeDelete:
 			fmt.Printf("  %s %s\n", red("-"), label)
-			printDiffTree(p.Diffs, secrets, ChangeDelete)
+			printDiffTree(p.Diffs, secrets, ChangeDelete, full)
 			fmt.Println()
 		}
 	}

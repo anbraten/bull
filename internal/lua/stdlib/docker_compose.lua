@@ -45,34 +45,30 @@ function docker_compose(id, opts)
     depends_on = opts.depends_on,
 
     plan = function()
-      local desired_hash = sha256(get_compose())
+      local compose = get_compose()
       local env_content = get_env_content()
 
       local current = _remote_file_info(h, remote_compose)
       if not current then
         local diffs = {
-          { field = "host",         after = h },
-          { field = "dir",          after = dir },
-          { field = "compose_hash", after = desired_hash:sub(1, 12) },
+          { field = "host", after = h },
+          { field = "dir",  after = dir },
+          _content_diff("compose", h, remote_compose, nil, compose),
         }
         if env_content then
-          table.insert(diffs, { field = "env_hash", after = sha256(env_content):sub(1, 12) })
+          table.insert(diffs, _content_diff("env", h, remote_env, nil, env_content))
         end
         return { change = "create", diffs = diffs }
       end
 
       local diffs = {}
-      if current.hash ~= desired_hash then
-        table.insert(diffs, { field = "compose_hash", before = current.hash:sub(1, 12), after = desired_hash:sub(1, 12) })
-      end
+      local compose_diff = _content_diff("compose", h, remote_compose, current, compose)
+      if compose_diff then table.insert(diffs, compose_diff) end
       -- Only compare .env when bull manages it.
       if env_content then
-        local desired_env = sha256(env_content)
         local current_env = _remote_file_info(h, remote_env)
-        local before = current_env and current_env.hash:sub(1, 12) or nil
-        if not current_env or current_env.hash ~= desired_env then
-          table.insert(diffs, { field = "env_hash", before = before, after = desired_env:sub(1, 12) })
-        end
+        local env_diff = _content_diff("env", h, remote_env, current_env, env_content)
+        if env_diff then table.insert(diffs, env_diff) end
       end
 
       if #diffs == 0 then

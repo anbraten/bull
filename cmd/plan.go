@@ -18,8 +18,11 @@ var planCmd = &cobra.Command{
 	},
 }
 
+var fullDiff bool
+
 func init() {
 	rootCmd.AddCommand(planCmd)
+	planCmd.Flags().BoolVar(&fullDiff, "full-diff", false, "Show complete diffs (no preview cutoff for new files, no size limit)")
 }
 
 func resolveFile(args []string) string {

@@ -23,5 +23,7 @@ func newEngine(configFile string) (*engine.Engine, error) {
 		return nil, err
 	}
 
-	return engine.New(verbose, values), nil
+	eng := engine.New(verbose, values)
+	eng.FullDiff = fullDiff
+	return eng, nil
 }

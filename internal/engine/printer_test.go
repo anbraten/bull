@@ -13,7 +13,7 @@ func TestPrintPlans(t *testing.T) {
 		{ID: "d", Type: "res", Change: ChangeError, Err: fmt.Errorf("something went wrong")},
 	}
 
-	printPlans(plan, map[string]string{})
+	printPlans(plan, map[string]string{}, false)
 }
 
 func TestIsSecretValue(t *testing.T) {
@@ -106,7 +106,7 @@ func TestPrintPlansWithSecretRedaction(t *testing.T) {
 	}
 
 	// Just verify it doesn't panic and runs through the redaction logic
-	printPlans(plans, secrets)
+	printPlans(plans, secrets, false)
 }
 
 func TestPrintPlansMultipleDiffs(t *testing.T) {
@@ -129,5 +129,5 @@ func TestPrintPlansMultipleDiffs(t *testing.T) {
 	}
 
 	// Verify redaction works across multiple diffs
-	printPlans(plans, secrets)
+	printPlans(plans, secrets, false)
 }
