@@ -23,7 +23,6 @@ var stdlibOrder = []string{
 	"stdlib/utils.lua",
 	"stdlib/shell.lua",
 	"stdlib/file.lua",
-	"stdlib/docker_compose.lua",
 }
 
 // Resource is a plan+apply pair registered from Lua via resource().

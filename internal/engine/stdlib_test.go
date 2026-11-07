@@ -53,6 +53,24 @@ func stdlibConfig(t *testing.T, body string) string {
 	return path
 }
 
+// withModule copies a module from test/config/bull_modules next to cfg so
+// tests can exercise modules that are not part of the embedded stdlib.
+func withModule(t *testing.T, cfg, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "test", "config", "bull_modules", name+".lua"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(filepath.Dir(cfg), "bull_modules")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name+".lua"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
 func planConfig(t *testing.T, cfg string) map[string]ResourcePlan {
 	t.Helper()
 	reg, err := luaruntime.Eval(cfg, false, nil)
@@ -184,7 +202,7 @@ func TestDockerComposeDetectsEnvChanges(t *testing.T) {
 		if env != "" {
 			envLine = ", env = " + env
 		}
-		return stdlibConfig(t, `docker_compose("app", { host = "h", dir = `+luaStr(dir)+`, compose = `+luaStr(compose)+envLine+` })`)
+		return withModule(t, stdlibConfig(t, `docker_compose("app", { host = "h", dir = `+luaStr(dir)+`, compose = `+luaStr(compose)+envLine+` })`), "docker_compose")
 	}
 
 	cfg := write("services: {}\n", `{ VERSION = "1", DEBUG = true }`)
