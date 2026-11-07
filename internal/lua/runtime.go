@@ -44,6 +44,9 @@ type Registry struct {
 	// SecretValues holds every value returned by secret(), including
 	// defaults, keyed by secret name. Output must redact these.
 	SecretValues map[string]string
+	// Warnings collects non-fatal issues found while loading, such as a
+	// module redefining a built-in resource type.
+	Warnings []string
 }
 
 func (r *Registry) Pool() *sshpool.Pool { return r.pool }
@@ -81,9 +84,11 @@ func Eval(filePath string, verbose bool, secrets map[string]string) (*Registry, 
 		return nil, fmt.Errorf("load stdlib: %w", err)
 	}
 
+	globals := newGlobalTracker(L, "built-in")
+
 	// Auto-load all *.lua files from bull_modules/ (alphabetical order).
 	// This makes provider modules available as globals without explicit require.
-	if err := loadModules(L, modulesDir); err != nil {
+	if err := loadModules(L, modulesDir, globals); err != nil {
 		L.Close()
 		return nil, fmt.Errorf("bull_modules: %w", err)
 	}
@@ -92,8 +97,57 @@ func Eval(filePath string, verbose bool, secrets map[string]string) (*Registry, 
 		L.Close()
 		return nil, fmt.Errorf("lua: %w", err)
 	}
+	globals.check(filepath.Base(absPath))
+
+	reg.Warnings = globals.warnings
+	for _, w := range reg.Warnings {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+	}
 
 	return reg, nil
+}
+
+// globalTracker records which file defined each global, so that a module or
+// config silently replacing an existing global (e.g. two modules both
+// defining apt, or a module redefining file) becomes a visible warning.
+type globalTracker struct {
+	L        *lua.LState
+	values   map[string]lua.LValue
+	sources  map[string]string
+	warnings []string
+}
+
+func newGlobalTracker(L *lua.LState, source string) *globalTracker {
+	g := &globalTracker{L: L, values: map[string]lua.LValue{}, sources: map[string]string{}}
+	L.G.Global.ForEach(func(k, v lua.LValue) {
+		if name, ok := k.(lua.LString); ok {
+			g.values[string(name)] = v
+			g.sources[string(name)] = source
+		}
+	})
+	return g
+}
+
+// check records globals set by source and warns about any it replaced.
+func (g *globalTracker) check(source string) {
+	var overridden []string
+	g.L.G.Global.ForEach(func(k, v lua.LValue) {
+		name, ok := k.(lua.LString)
+		if !ok {
+			return
+		}
+		prev, seen := g.values[string(name)]
+		if seen && prev == v {
+			return
+		}
+		if seen {
+			overridden = append(overridden, fmt.Sprintf("%s overrides %q from %s", source, string(name), g.sources[string(name)]))
+		}
+		g.values[string(name)] = v
+		g.sources[string(name)] = source
+	})
+	sort.Strings(overridden) // ForEach order is not deterministic
+	g.warnings = append(g.warnings, overridden...)
 }
 
 func loadStdlib(L *lua.LState) error {
@@ -111,7 +165,7 @@ func loadStdlib(L *lua.LState) error {
 
 // loadModules auto-loads all *.lua files from a bull_modules/ directory.
 // Missing directory is silently ignored; file errors are returned.
-func loadModules(L *lua.LState, dir string) error {
+func loadModules(L *lua.LState, dir string, globals *globalTracker) error {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil
@@ -132,6 +186,7 @@ func loadModules(L *lua.LState, dir string) error {
 		if err := L.DoFile(path); err != nil {
 			return fmt.Errorf("%s: %w", filepath.Base(path), err)
 		}
+		globals.check("bull_modules/" + filepath.Base(path))
 	}
 	return nil
 }
