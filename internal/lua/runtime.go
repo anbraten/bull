@@ -148,6 +148,16 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		fmt.Printf("[verbose] "+format+"\n", args...)
 	}
 
+	// Primitives for module authors live under the "bull" table so they never
+	// collide with user-defined globals. host/env/secret stay global as part of
+	// the config DSL.
+	bull := L.NewTable()
+	sshTbl := L.NewTable()
+	jsonTbl := L.NewTable()
+	L.SetField(bull, "ssh", sshTbl)
+	L.SetField(bull, "json", jsonTbl)
+	L.SetGlobal("bull", bull)
+
 	// host("name", { addr=, user=, key=, password= })
 	L.SetGlobal("host", L.NewFunction(func(L *lua.LState) int {
 		name := L.CheckString(1)
@@ -170,8 +180,8 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		return 0
 	}))
 
-	// resource("id", { type=, plan=fn, apply=fn })
-	L.SetGlobal("resource", L.NewFunction(func(L *lua.LState) int {
+	// bull.resource("id", { type=, plan=fn, apply=fn })
+	L.SetField(bull, "resource", L.NewFunction(func(L *lua.LState) int {
 		id := L.CheckString(1)
 		opts := L.CheckTable(2)
 
@@ -211,62 +221,62 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		return 0
 	}))
 
-	// ssh_exec(host, cmd) → stdout, exit_code, err_msg
+	// bull.ssh.exec(host, cmd) → stdout, exit_code, err_msg
 	// exit_code=-1 and err_msg!="" means SSH/connection failure
-	L.SetGlobal("ssh_exec", L.NewFunction(func(L *lua.LState) int {
+	L.SetField(sshTbl, "exec", L.NewFunction(func(L *lua.LState) int {
 		hostName := L.CheckString(1)
 		cmd := L.CheckString(2)
-		verbosef("ssh_exec(host=%q, cmd=%q)", hostName, cmd)
+		verbosef("bull.ssh.exec(host=%q, cmd=%q)", hostName, cmd)
 		stdout, code, errMsg := pool.Exec(hostName, cmd)
-		verbosef("ssh_exec -> stdout=%q exit_code=%d err_msg=%q", stdout, code, errMsg)
+		verbosef("bull.ssh.exec -> stdout=%q exit_code=%d err_msg=%q", stdout, code, errMsg)
 		L.Push(lua.LString(stdout))
 		L.Push(lua.LNumber(code))
 		L.Push(lua.LString(errMsg))
 		return 3
 	}))
 
-	// ssh_upload(host, remote_path, content [, mode]) → err_msg
-	L.SetGlobal("ssh_upload", L.NewFunction(func(L *lua.LState) int {
+	// bull.ssh.upload(host, remote_path, content [, mode]) → err_msg
+	L.SetField(sshTbl, "upload", L.NewFunction(func(L *lua.LState) int {
 		hostName := L.CheckString(1)
 		path := L.CheckString(2)
 		content := L.CheckString(3)
 		mode := os.FileMode(L.OptInt(4, 0o644))
-		verbosef("ssh_upload(host=%q, path=%q, bytes=%d, mode=%#o)", hostName, path, len(content), mode)
+		verbosef("bull.ssh.upload(host=%q, path=%q, bytes=%d, mode=%#o)", hostName, path, len(content), mode)
 		if err := pool.Upload(hostName, path, []byte(content), mode); err != nil {
-			verbosef("ssh_upload -> err_msg=%q", err.Error())
+			verbosef("bull.ssh.upload -> err_msg=%q", err.Error())
 			L.Push(lua.LString(err.Error()))
 		} else {
-			verbosef("ssh_upload -> err_msg=%q", "")
+			verbosef("bull.ssh.upload -> err_msg=%q", "")
 			L.Push(lua.LString(""))
 		}
 		return 1
 	}))
 
-	// ssh_read(host, remote_path) → content, err_msg
-	// Returns the file's raw bytes (unlike ssh_exec, nothing is trimmed).
-	L.SetGlobal("ssh_read", L.NewFunction(func(L *lua.LState) int {
+	// bull.ssh.read(host, remote_path) → content, err_msg
+	// Returns the file's raw bytes (unlike bull.ssh.exec, nothing is trimmed).
+	L.SetField(sshTbl, "read", L.NewFunction(func(L *lua.LState) int {
 		hostName := L.CheckString(1)
 		path := L.CheckString(2)
-		verbosef("ssh_read(host=%q, path=%q)", hostName, path)
+		verbosef("bull.ssh.read(host=%q, path=%q)", hostName, path)
 		data, err := pool.Download(hostName, path)
 		if err != nil {
-			verbosef("ssh_read -> err_msg=%q", err.Error())
+			verbosef("bull.ssh.read -> err_msg=%q", err.Error())
 			L.Push(lua.LString(""))
 			L.Push(lua.LString(err.Error()))
 			return 2
 		}
-		verbosef("ssh_read -> bytes=%d", len(data))
+		verbosef("bull.ssh.read -> bytes=%d", len(data))
 		L.Push(lua.LString(data))
 		L.Push(lua.LString(""))
 		return 2
 	}))
 
-	// local_exec(cmd) → stdout, exit_code, err_msg
-	L.SetGlobal("local_exec", L.NewFunction(func(L *lua.LState) int {
+	// bull.exec(cmd) → stdout, exit_code, err_msg
+	L.SetField(bull, "exec", L.NewFunction(func(L *lua.LState) int {
 		cmdStr := L.CheckString(1)
-		verbosef("local_exec(cmd=%q)", cmdStr)
+		verbosef("bull.exec(cmd=%q)", cmdStr)
 		stdout, code, errMsg := runLocal(cmdStr)
-		verbosef("local_exec -> stdout=%q exit_code=%d err_msg=%q", stdout, code, errMsg)
+		verbosef("bull.exec -> stdout=%q exit_code=%d err_msg=%q", stdout, code, errMsg)
 		L.Push(lua.LString(stdout))
 		L.Push(lua.LNumber(code))
 		L.Push(lua.LString(errMsg))
@@ -307,27 +317,27 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		return 0
 	}))
 
-	// read_file(path) → content  (errors if not found)
-	L.SetGlobal("read_file", L.NewFunction(func(L *lua.LState) int {
+	// bull.read_file(path) → content  (errors if not found)
+	L.SetField(bull, "read_file", L.NewFunction(func(L *lua.LState) int {
 		path := resolveLocalPath(L.CheckString(1), configDir)
 		data, err := os.ReadFile(path)
 		if err != nil {
-			L.RaiseError("read_file: %v", err)
+			L.RaiseError("bull.read_file: %v", err)
 		}
 		L.Push(lua.LString(data))
 		return 1
 	}))
 
-	// sha256(content) → full hex string
-	L.SetGlobal("sha256", L.NewFunction(func(L *lua.LState) int {
+	// bull.sha256(content) → full hex string
+	L.SetField(bull, "sha256", L.NewFunction(func(L *lua.LState) int {
 		content := L.CheckString(1)
 		h := sha256.Sum256([]byte(content))
 		L.Push(lua.LString(fmt.Sprintf("%x", h)))
 		return 1
 	}))
 
-	// json_decode(str) → table, err_msg
-	L.SetGlobal("json_decode", L.NewFunction(func(L *lua.LState) int {
+	// bull.json.decode(str) → table, err_msg
+	L.SetField(jsonTbl, "decode", L.NewFunction(func(L *lua.LState) int {
 		s := L.CheckString(1)
 		var v any
 		if err := json.Unmarshal([]byte(s), &v); err != nil {
@@ -340,8 +350,8 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		return 2
 	}))
 
-	// json_encode(table) → str, err_msg
-	L.SetGlobal("json_encode", L.NewFunction(func(L *lua.LState) int {
+	// bull.json.encode(table) → str, err_msg
+	L.SetField(jsonTbl, "encode", L.NewFunction(func(L *lua.LState) int {
 		v := luaToGo(L.CheckAny(1))
 		data, err := json.Marshal(v)
 		if err != nil {
@@ -354,8 +364,8 @@ func registerPrimitives(L *lua.LState, reg *Registry, pool *sshpool.Pool, verbos
 		return 2
 	}))
 
-	// q(str) → single-quoted shell-safe string
-	L.SetGlobal("q", L.NewFunction(func(L *lua.LState) int {
+	// bull.q(str) → single-quoted shell-safe string
+	L.SetField(bull, "q", L.NewFunction(func(L *lua.LState) int {
 		L.Push(lua.LString(sshpool.ShellQuote(L.CheckString(1))))
 		return 1
 	}))

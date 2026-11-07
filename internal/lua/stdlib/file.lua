@@ -19,13 +19,13 @@ function file(id, opts)
   local function get_content()
     if opts.content then return opts.content end
     local src = opts.local_path or opts.src
-    if src then return read_file(src) end
+    if src then return bull.read_file(src) end
     error("file " .. id .. ": content or local_path is required")
   end
 
   local mode = tonumber(opts.mode or "0644", 8) or 0x1A4
 
-  resource(id, {
+  bull.resource(id, {
     type = "file",
     depends_on = opts.depends_on,
 
@@ -59,7 +59,7 @@ function file(id, opts)
 
     apply = function()
       local content = get_content()
-      local err = ssh_upload(h, remote, content, mode)
+      local err = bull.ssh.upload(h, remote, content, mode)
       if err ~= "" then error("upload failed: " .. err) end
     end,
   })

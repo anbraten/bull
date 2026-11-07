@@ -15,14 +15,14 @@ function shell(id, opts)
   local cmd = opts.command or opts.cmd or opts.run
   assert(cmd and cmd ~= "", "shell " .. id .. ": command is required")
 
-  resource(id, {
+  bull.resource(id, {
     type = "shell",
     depends_on = opts.depends_on,
 
     plan = function()
       -- creates guard: skip if remote path exists
       if opts.creates then
-        local _, code, err = ssh_exec(h, "test -e " .. q(opts.creates))
+        local _, code, err = bull.ssh.exec(h, "test -e " .. bull.q(opts.creates))
         if err ~= "" then
           error("cannot reach host '" .. h .. "': " .. err)
         end
@@ -37,7 +37,7 @@ function shell(id, opts)
 
       -- unless guard: skip if check command exits 0
       if opts.unless then
-        local _, code, err = ssh_exec(h, opts.unless)
+        local _, code, err = bull.ssh.exec(h, opts.unless)
         if err ~= "" then
           error("cannot reach host '" .. h .. "': " .. err)
         end
@@ -55,7 +55,7 @@ function shell(id, opts)
     end,
 
     apply = function()
-      local out, code, err = ssh_exec(h, cmd)
+      local out, code, err = bull.ssh.exec(h, cmd)
       if err ~= "" then error(err) end
       if code ~= 0 then
         error("command exited " .. code .. ": " .. out)

@@ -27,17 +27,17 @@ function hetzner_dns(id, opts)
     end
 
     local cmd = "curl -sS -w '\\n%{http_code}' -X " .. method
-      .. " -H " .. q("Auth-API-Token: " .. token)
+      .. " -H " .. bull.q("Auth-API-Token: " .. token)
 
     if body then
-      local encoded, enc_err = json_encode(body)
-      if enc_err then error("json_encode: " .. enc_err) end
-      cmd = cmd .. " -H 'Content-Type: application/json' -d " .. q(encoded)
+      local encoded, enc_err = bull.json.encode(body)
+      if enc_err then error("bull.json.encode: " .. enc_err) end
+      cmd = cmd .. " -H 'Content-Type: application/json' -d " .. bull.q(encoded)
     end
 
     cmd = cmd .. " 'https://dns.hetzner.com/api/v1" .. path .. "'"
 
-    local out, code, exec_err = local_exec(cmd)
+    local out, code, exec_err = bull.exec(cmd)
     if exec_err ~= "" then error("curl failed: " .. exec_err) end
     if code ~= 0 then error("curl exited " .. code) end
 
@@ -53,8 +53,8 @@ function hetzner_dns(id, opts)
     table.remove(body_lines)
     local resp_body = table.concat(body_lines, "\n")
 
-    local parsed, parse_err = json_decode(resp_body)
-    if parse_err then error("json_decode: " .. parse_err .. "\nBody: " .. resp_body) end
+    local parsed, parse_err = bull.json.decode(resp_body)
+    if parse_err then error("bull.json.decode: " .. parse_err .. "\nBody: " .. resp_body) end
 
     return parsed, status
   end
@@ -81,7 +81,7 @@ function hetzner_dns(id, opts)
     return nil
   end
 
-  resource(id, {
+  bull.resource(id, {
     type = "hetzner_dns",
     depends_on = opts.depends_on,
 

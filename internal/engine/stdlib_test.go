@@ -16,29 +16,29 @@ import (
 const fakeRemote = `
 host("h", { addr = "unused:22", password = "unused" })
 docker_calls = {}
-function ssh_exec(h, cmd)
+function bull.ssh.exec(h, cmd)
   if cmd:find("docker compose", 1, true) then
     table.insert(docker_calls, cmd)
     return "", 0, ""
   end
-  return local_exec(cmd .. " 2>&1")
+  return bull.exec(cmd .. " 2>&1")
 end
-function ssh_read(h, path)
+function bull.ssh.read(h, path)
   local f, err = io.open(path, "rb")
   if not f then return "", err end
   local data = f:read("*a")
   f:close()
   return data, ""
 end
-function ssh_upload(h, path, content, mode)
+function bull.ssh.upload(h, path, content, mode)
   local dir = path:match("^(.*)/[^/]*$")
-  local _, code = local_exec("mkdir -p " .. q(dir))
+  local _, code = bull.exec("mkdir -p " .. bull.q(dir))
   if code ~= 0 then return "mkdir failed" end
   local f, err = io.open(path, "wb")
   if not f then return err end
   f:write(content)
   f:close()
-  local _, code = local_exec("chmod " .. string.format("%o", mode or 420) .. " " .. q(path))
+  local _, code = bull.exec("chmod " .. string.format("%o", mode or 420) .. " " .. bull.q(path))
   if code ~= 0 then return "chmod failed" end
   return ""
 end
@@ -152,7 +152,7 @@ func TestShellGuards(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
 	cfg := stdlibConfig(t, `
-shell("creates", { host = "h", command = "touch "..q(`+luaStr(marker)+`), creates = `+luaStr(marker)+` })
+shell("creates", { host = "h", command = "touch "..bull.q(`+luaStr(marker)+`), creates = `+luaStr(marker)+` })
 shell("unless-true", { host = "h", command = "false", unless = "true" })
 shell("unless-false", { host = "h", command = "true", unless = "false" })
 shell("always", { host = "h", command = "true" })

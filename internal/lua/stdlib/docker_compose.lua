@@ -24,11 +24,11 @@ function docker_compose(id, opts)
 
   local function get_compose()
     if opts.compose then return opts.compose end
-    return read_file(opts.compose_file or opts.file)
+    return bull.read_file(opts.compose_file or opts.file)
   end
 
   local function get_env_content()
-    if opts.env_file then return read_file(opts.env_file) end
+    if opts.env_file then return bull.read_file(opts.env_file) end
     if opts.env then
       local lines = {}
       for k, v in pairs(opts.env) do
@@ -40,7 +40,7 @@ function docker_compose(id, opts)
     return nil
   end
 
-  resource(id, {
+  bull.resource(id, {
     type = "docker_compose",
     depends_on = opts.depends_on,
 
@@ -81,23 +81,23 @@ function docker_compose(id, opts)
       local desired = get_compose()
 
       -- Ensure directory exists
-      local _, _, err = ssh_exec(h, "mkdir -p " .. q(dir))
+      local _, _, err = bull.ssh.exec(h, "mkdir -p " .. bull.q(dir))
       if err ~= "" then error("mkdir failed: " .. err) end
 
       -- Upload compose file
-      local upload_err = ssh_upload(h, remote_compose, desired)
+      local upload_err = bull.ssh.upload(h, remote_compose, desired)
       if upload_err ~= "" then error("upload compose: " .. upload_err) end
 
       -- Upload .env if provided
       local env_content = get_env_content()
       if env_content then
-        upload_err = ssh_upload(h, remote_env, env_content, 0x180) -- 0600
+        upload_err = bull.ssh.upload(h, remote_env, env_content, 0x180) -- 0600
         if upload_err ~= "" then error("upload .env: " .. upload_err) end
       end
 
       -- Bring stack up
-      local out, code, exec_err = ssh_exec(h,
-        "docker compose -f " .. q(remote_compose) .. " up -d --remove-orphans --pull always 2>&1")
+      local out, code, exec_err = bull.ssh.exec(h,
+        "docker compose -f " .. bull.q(remote_compose) .. " up -d --remove-orphans --pull always 2>&1")
       if exec_err ~= "" then error(exec_err) end
       if code ~= 0 then error("docker compose up failed:\n" .. out) end
     end,

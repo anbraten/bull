@@ -24,7 +24,7 @@ function apt(id, opts)
 
   local function quote_all(list)
     local out = {}
-    for i, pkg in ipairs(list) do out[i] = q(pkg) end
+    for i, pkg in ipairs(list) do out[i] = bull.q(pkg) end
     return out
   end
   local quoted = quote_all(pkgs)
@@ -34,7 +34,7 @@ function apt(id, opts)
   -- exit code and parse stdout. Removed packages are still listed (status
   -- "rc"/"un"), so only "ii" counts as installed.
   local function missing_packages()
-    local out, _, err = ssh_exec(h, "dpkg-query -W -f '${Package} ${db:Status-Abbrev}\\n' "
+    local out, _, err = bull.ssh.exec(h, "dpkg-query -W -f '${Package} ${db:Status-Abbrev}\\n' "
       .. table.concat(quoted, " ") .. " 2>/dev/null; true")
     if err ~= "" then error("cannot reach host '" .. h .. "': " .. err) end
 
@@ -52,7 +52,7 @@ function apt(id, opts)
     return missing
   end
 
-  resource(id, {
+  bull.resource(id, {
     type = "apt",
     depends_on = opts.depends_on,
 
@@ -70,7 +70,7 @@ function apt(id, opts)
 
     apply = function()
       if opts.update then
-        local _, code, err = ssh_exec(h, "DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>&1")
+        local _, code, err = bull.ssh.exec(h, "DEBIAN_FRONTEND=noninteractive apt-get update -qq 2>&1")
         if err ~= "" then error(err) end
         if code ~= 0 then error("apt-get update failed") end
       end
@@ -81,7 +81,7 @@ function apt(id, opts)
 
       local cmd = "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "
         .. table.concat(quote_all(missing), " ") .. " 2>&1"
-      local out, code, err = ssh_exec(h, cmd)
+      local out, code, err = bull.ssh.exec(h, cmd)
       if err ~= "" then error(err) end
       if code ~= 0 then error("apt-get install failed:\n" .. out) end
     end,

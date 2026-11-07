@@ -14,16 +14,16 @@ import (
 
 // writeConfig writes a Lua config into a temp dir and returns its path.
 // Resources record applies by appending to a local "applied.log" file via
-// local_exec, so tests can assert what actually ran without any SSH.
+// bull.exec, so tests can assert what actually ran without any SSH.
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "infra.lua")
 	prelude := `
 local log = [[` + filepath.Join(dir, "applied.log") + `]]
-function mark(id) local_exec("echo " .. q(id) .. " >> " .. q(log)) end
+function mark(id) bull.exec("echo " .. bull.q(id) .. " >> " .. bull.q(log)) end
 function ok(id, change, deps)
-  resource(id, {
+  bull.resource(id, {
     type = "test",
     depends_on = deps,
     plan = function() return { change = change or "create" } end,
@@ -31,7 +31,7 @@ function ok(id, change, deps)
   })
 end
 function failing(id, deps)
-  resource(id, {
+  bull.resource(id, {
     type = "test",
     depends_on = deps,
     plan = function() return { change = "create" } end,
@@ -135,7 +135,7 @@ failing("tracked-bad")
 func TestApplyPlanErrorAppliesNothing(t *testing.T) {
 	cfg := writeConfig(t, `
 ok("a")
-resource("broken", { type = "test", plan = function() error("cannot plan") end, apply = function() end })
+bull.resource("broken", { type = "test", plan = function() error("cannot plan") end, apply = function() end })
 `)
 	err := New(false, nil).Apply(cfg, true, false)
 	if err == nil || !strings.Contains(err.Error(), "cannot plan") {
@@ -208,7 +208,7 @@ func TestApplyOrphans(t *testing.T) {
 func TestPlanReturnsErrorsAndWritesNoState(t *testing.T) {
 	cfg := writeConfig(t, `
 ok("a")
-resource("bad", { type = "test", plan = function() return "nope" end, apply = function() end })
+bull.resource("bad", { type = "test", plan = function() return "nope" end, apply = function() end })
 `)
 	err := New(false, nil).Plan(cfg)
 	if err == nil || !strings.Contains(err.Error(), "plan function must return a table") {

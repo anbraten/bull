@@ -20,8 +20,8 @@ end
 -- Returns nil if the path is not a regular file. Raises on SSH failure or if
 -- the file can't be read (e.g. permission denied).
 function _remote_file_info(h, path)
-  local p = q(path)
-  local out, code, err = ssh_exec(h,
+  local p = bull.q(path)
+  local out, code, err = bull.ssh.exec(h,
     "if [ -f " .. p .. " ]; then sha256sum " .. p .. " && stat -c '%a %s' " .. p .. "; else echo missing; fi")
   if err ~= "" then error("cannot reach host '" .. h .. "': " .. err) end
   if code ~= 0 then error("inspect " .. path .. ": " .. out) end
@@ -41,7 +41,7 @@ _MAX_TEXT_DIFF = 512 * 1024
 -- ({ field, before, after, text = true }), downloading the remote content
 -- only when it differs. Falls back to a "<field>_hash" diff for large files.
 function _content_diff(field, h, path, current, desired)
-  local desired_hash = sha256(desired)
+  local desired_hash = bull.sha256(desired)
   if current and current.hash == desired_hash then return nil end
 
   if #desired > _MAX_TEXT_DIFF or (current and current.size > _MAX_TEXT_DIFF) then
@@ -54,7 +54,7 @@ function _content_diff(field, h, path, current, desired)
 
   local before = nil
   if current then
-    local content, err = ssh_read(h, path)
+    local content, err = bull.ssh.read(h, path)
     if err ~= "" then error("cannot read " .. path .. " on '" .. h .. "': " .. err) end
     before = content
   end

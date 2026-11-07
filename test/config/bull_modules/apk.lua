@@ -25,7 +25,7 @@ function apk(id, opts)
 
   local function quote_all(list)
     local out = {}
-    for i, pkg in ipairs(list) do out[i] = q(pkg) end
+    for i, pkg in ipairs(list) do out[i] = bull.q(pkg) end
     return out
   end
   local quoted = quote_all(pkgs)
@@ -35,7 +35,7 @@ function apk(id, opts)
   local function missing_packages()
     local check = "for p in " .. table.concat(quoted, " ")
       .. "; do apk info -e \"$p\" > /dev/null 2>&1 && echo \"$p\"; done"
-    local out, _, err = ssh_exec(h, check)
+    local out, _, err = bull.ssh.exec(h, check)
     if err ~= "" then error("cannot reach host '" .. h .. "': " .. err) end
 
     local installed = {}
@@ -52,7 +52,7 @@ function apk(id, opts)
     return missing
   end
 
-  resource(id, {
+  bull.resource(id, {
     type = "apk",
     depends_on = opts.depends_on,
 
@@ -71,14 +71,14 @@ function apk(id, opts)
     apply = function()
       -- Add extra repository if specified
       if opts.repository then
-        local _, code, err = ssh_exec(h,
-          "echo " .. q(opts.repository) .. " >> /etc/apk/repositories")
+        local _, code, err = bull.ssh.exec(h,
+          "echo " .. bull.q(opts.repository) .. " >> /etc/apk/repositories")
         if err ~= "" then error(err) end
         if code ~= 0 then error("failed to add repository") end
       end
 
       if opts.update then
-        local _, code, err = ssh_exec(h, "apk update -q 2>&1")
+        local _, code, err = bull.ssh.exec(h, "apk update -q 2>&1")
         if err ~= "" then error(err) end
         if code ~= 0 then error("apk update failed") end
       end
@@ -86,7 +86,7 @@ function apk(id, opts)
       local missing = missing_packages()
       if #missing == 0 then return end
 
-      local out, code, err = ssh_exec(h,
+      local out, code, err = bull.ssh.exec(h,
         "apk add -q " .. table.concat(quote_all(missing), " ") .. " 2>&1")
       if err ~= "" then error(err) end
       if code ~= 0 then error("apk add failed:\n" .. out) end
